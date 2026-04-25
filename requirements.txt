@@ -1,0 +1,6 @@
+pydantic
+pyyaml
+psutil
+paho-mqtt
+fastapi
+uvicorn

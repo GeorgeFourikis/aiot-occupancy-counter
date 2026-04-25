@@ -1,0 +1,15 @@
+{
+  "site_id": "fh_technikum_aiot_lab",
+  "camera_id": "rpi5_imx500_01",
+  "person_class_id": 0,
+  "person_class_name": "person",
+  "confidence_threshold": 0.40,
+  "smoothing_window": 15,
+  "occupied_confirmation_seconds": 0.5,
+  "empty_confirmation_seconds": 2.5,
+  "count_change_confirmation_seconds": 1.2,
+  "heartbeat_interval_seconds": 15.0,
+  "csv_log_path": "data/logs/occupancy_events.csv",
+  "sqlite_path": "data/occupancy.db",
+  "draw_overlay": true
+}
