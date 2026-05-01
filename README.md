@@ -183,6 +183,11 @@ After running this is how it looks like:
 
 ![script run empty](./images/08_script_run_empty.png)
 
+### IMPORTANT
+To make sure our scripts are ready to be executed, simply run this from the root directory:
+```sh
+chmod +x scripts/*.sh
+```
 
 ## Check the Stored Events
 The Project stores occupancy events in 2 places, `data/logs/occupancy_events.csv` and `data/occupancy.db`. 
