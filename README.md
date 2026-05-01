@@ -354,7 +354,6 @@ chmod +x scripts/*.sh
 To verify the Hardware there are the following commands:
 ```sh
 ./scripts/verify_hardware.sh
-./scripts/run_hailo_detection.sh
 ```
 
 The original script still works as is:
