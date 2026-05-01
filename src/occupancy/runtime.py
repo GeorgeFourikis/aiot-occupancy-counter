@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import sqlite3
 import statistics
 import time
@@ -38,19 +39,25 @@ class OccupancyConfig:
     def load() -> "OccupancyConfig":
         data = json.loads(CONFIG_PATH.read_text())
 
+        site_id = os.getenv("AIOT_SITE_ID", data.get("site_id", "default_site"))
+        camera_id = os.getenv("AIOT_CAMERA_ID", data.get("camera_id", "camera_01"))
+
+        csv_log_path = os.getenv("AIOT_CSV_LOG_PATH", data.get("csv_log_path", "data/logs/occupancy_events.csv"))
+        sqlite_path = os.getenv("AIOT_SQLITE_PATH", data.get("sqlite_path", "data/occupancy.db"))
+
         return OccupancyConfig(
-            site_id=data.get("site_id", "default_site"),
-            camera_id=data.get("camera_id", "camera_01"),
+            site_id=site_id,
+            camera_id=camera_id,
             person_class_id=int(data.get("person_class_id", 0)),
             person_class_name=data.get("person_class_name", "person"),
             confidence_threshold=float(data.get("confidence_threshold", 0.40)),
-            smoothing_window=int(data.get("smoothing_window", 41)),
-            occupied_confirmation_seconds=float(data.get("occupied_confirmation_seconds", 1.5)),
-            empty_confirmation_seconds=float(data.get("empty_confirmation_seconds", 8.0)),
-            count_change_confirmation_seconds=float(data.get("count_change_confirmation_seconds", 5.0)),
-            heartbeat_interval_seconds=float(data.get("heartbeat_interval_seconds", 20.0)),
-            csv_log_path=PROJECT_ROOT / data.get("csv_log_path", "data/logs/occupancy_events.csv"),
-            sqlite_path=PROJECT_ROOT / data.get("sqlite_path", "data/occupancy.db"),
+            smoothing_window=int(data.get("smoothing_window", 15)),
+            occupied_confirmation_seconds=float(data.get("occupied_confirmation_seconds", 0.5)),
+            empty_confirmation_seconds=float(data.get("empty_confirmation_seconds", 2.5)),
+            count_change_confirmation_seconds=float(data.get("count_change_confirmation_seconds", 1.2)),
+            heartbeat_interval_seconds=float(data.get("heartbeat_interval_seconds", 15.0)),
+            csv_log_path=PROJECT_ROOT / csv_log_path,
+            sqlite_path=PROJECT_ROOT / sqlite_path,
             draw_overlay=bool(data.get("draw_overlay", True)),
         )
 
@@ -69,8 +76,15 @@ class OccupancyRuntime:
 
         self.config.csv_log_path.parent.mkdir(parents=True, exist_ok=True)
         self.config.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+
         self._init_sqlite()
         self._init_csv()
+
+        print(
+            f"AIOT runtime started | site_id={self.config.site_id} | "
+            f"camera_id={self.config.camera_id}",
+            flush=True,
+        )
 
     def update(self, frame: Any, detections: dict[str, Any], labels: list[str]) -> None:
         raw_count = self._count_people(detections, labels)
@@ -151,7 +165,11 @@ class OccupancyRuntime:
             )
             self.last_log_time_monotonic = now
 
-            print(f"STATE CHANGE | {old_count} -> {self.confirmed_count}", flush=True)
+            print(
+                f"STATE CHANGE | camera_id={self.config.camera_id} | "
+                f"{old_count} -> {self.confirmed_count}",
+                flush=True,
+            )
 
         return self.confirmed_count
 
@@ -190,8 +208,13 @@ class OccupancyRuntime:
 
         return int(round(statistics.median(self.count_window)))
 
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.config.sqlite_path, timeout=10.0)
+
     def _init_sqlite(self) -> None:
-        with sqlite3.connect(self.config.sqlite_path) as conn:
+        with self._connect() as conn:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=10000")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS occupancy_events (
@@ -251,7 +274,8 @@ class OccupancyRuntime:
         with self.config.csv_log_path.open("a", newline="") as f:
             csv.writer(f).writerow(row)
 
-        with sqlite3.connect(self.config.sqlite_path) as conn:
+        with self._connect() as conn:
+            conn.execute("PRAGMA busy_timeout=10000")
             conn.execute(
                 """
                 INSERT INTO occupancy_events (
@@ -270,8 +294,8 @@ class OccupancyRuntime:
             )
 
         print(
-            f"OCCUPANCY | {timestamp} | event={event_type} | "
-            f"raw={raw_count} | smoothed={smoothed_count} | "
+            f"OCCUPANCY | {timestamp} | camera_id={self.config.camera_id} | "
+            f"event={event_type} | raw={raw_count} | smoothed={smoothed_count} | "
             f"confirmed={confirmed_count} | state={state}",
             flush=True,
         )
@@ -294,7 +318,7 @@ class OccupancyRuntime:
             )
             candidate_text = f"{self.candidate_count} for {age:.1f}/{required:.1f}s"
 
-        cv2.rectangle(frame, (10, 10), (560, 155), (0, 0, 0), -1)
+        cv2.rectangle(frame, (10, 10), (620, 180), (0, 0, 0), -1)
 
         cv2.putText(
             frame,
@@ -309,10 +333,10 @@ class OccupancyRuntime:
 
         cv2.putText(
             frame,
-            f"Confirmed people: {confirmed_count}",
+            f"Camera: {self.config.camera_id}",
             (20, 70),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
+            0.60,
             (255, 255, 255),
             2,
             cv2.LINE_AA,
@@ -320,7 +344,7 @@ class OccupancyRuntime:
 
         cv2.putText(
             frame,
-            f"Raw: {raw_count} | Smoothed: {smoothed_count}",
+            f"Confirmed people: {confirmed_count}",
             (20, 100),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.65,
@@ -331,8 +355,19 @@ class OccupancyRuntime:
 
         cv2.putText(
             frame,
-            f"State: {state} | Candidate: {candidate_text}",
+            f"Raw: {raw_count} | Smoothed: {smoothed_count}",
             (20, 130),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+        cv2.putText(
+            frame,
+            f"State: {state} | Candidate: {candidate_text}",
+            (20, 160),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.60,
             (255, 255, 255),
