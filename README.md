@@ -335,3 +335,59 @@ or select a specific device:
 ```
 For the authors case it seems that it works perfect just by adding the `-i usb` flag.
 ![webcam](./images/10_usb_webcam.png)
+
+___
+# Version 2
+Following the previous section and proving that we can use a webcam over USB instead of the RPI camera, we can make some changes and manage the input from 2 cameras but not at the same time. It seems that Hailo could not simultaneously work with both cameras. 
+
+## How to test
+Exactly as we did before, in a clean clone in a fresh machine do the following:
+```sh
+cd ~/aiot-workspace/aiot-occupancy-counter # where the cloned repo can be found
+
+python scripts/patch_hailo_threading.py ~/aiot-workspace/hailo-apps
+python scripts/patch_hailo_postprocess.py ~/aiot-workspace/hailo-apps
+
+chmod +x scripts/*.sh
+```
+
+To verify the Hardware there are the following commands:
+```sh
+./scripts/verify_hardware.sh
+./scripts/run_hailo_detection.sh
+```
+
+The original script still works as is:
+```sh
+./scripts/run_occupancy.sh
+```
+
+For Version 2 we need to pass a string to be used as an ID (`camera_id`) for the logs and the DB entries, we can use one of these:
+```sh
+./scripts/run_occupancy_camera.sh rpi rpi5_imx500_01
+./scripts/run_occupancy_camera.sh usb usb_webcam_01
+```
+
+To check the latest events we can run:
+```sh
+./scripts/show_status.sh
+```
+
+To run the Backend:
+```sh
+./scripts/run_backend.sh
+```
+
+Then we can browse the Dashboard either via RPI at `http://127.0.0.1:8000` or remotely being in the same network with the RPI using the IP that we can find in the terminal like the following image.
+![rpi host](./images/11_hostname.png)
+
+Using this we can now reach this from the a different device within the same network as seen below. 
+![Dashboard](./images/12_dashboard.png)
+
+
+## **IMPORTANT** Limitation
+As mentioned above, if we try to run both cameras at the same time, we receive the following error. 
+![error hailo](./images/13_error_hailo.png)
+
+This is considered a limitation of Hailo and for this Project we will be using the cameras sequentially (one at a time) and not parallely. 
+
